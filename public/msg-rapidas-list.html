@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mensagens Rápidas - CondoApp</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .navbar .back-btn {
+      color: #fff;
+      font-size: 1.7rem;
+      text-decoration: none;
+      margin-left: auto;
+    }
+    .navbar .back-btn:hover {
+      color: #e0e0e0;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-light bg-primary">
+    <div class="container-fluid d-flex align-items-center">
+      <span class="navbar-brand mb-0 h1 text-white">CondoApp</span>
+      <a href="#" class="back-btn ms-auto" onclick="goBack()" title="Voltar">
+        <i class="bi bi-arrow-left"></i>
+      </a>
+    </div>
+  </nav>
+
+  <div class="container mt-4">
+    <div class="d-flex justify-content-between mb-3">
+      <h4>Mensagens Rápidas Cadastradas</h4>
+      <a href="msg-rapida-form.html" class="btn btn-success"> + </a>
+    </div>
+    <div id="mensagensList" class="list-group"></div>
+    <div id="mensagensMsg" class="mt-3"></div>
+  </div>
+
+  <script>
+    function goBack() {
+      window.location.href = 'dashboard.html';
+    }
+
+    function logout() {
+      localStorage.removeItem('user');
+      window.location.href = "login.html";
+    }
+
+    async function loadMensagens() {
+      const res = await fetch('/api/msg-rapidas');
+      const mensagens = await res.json();
+
+      // Carrega os tipos para exibir o nome correto
+      const tiposRes = await fetch('/api/tipos-msg-rapidas');
+      const tipos = await tiposRes.json();
+
+      const list = document.getElementById('mensagensList');
+      list.innerHTML = '';
+      mensagens.forEach(msg => {
+        const tipo = tipos.find(t => t.id === msg.tipoId);
+        const tipoNome = tipo ? tipo.nome : 'Tipo não encontrado';
+
+        list.innerHTML += `
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start">
+              <div class="flex-grow-1 me-3">
+                <h6 class="mb-1">Tipo: ${tipoNome}</h6>
+                <p class="mb-1">${msg.texto}</p>
+              </div>
+              <div class="d-flex gap-2 flex-shrink-0">
+                <a href="msg-rapida-form.html?id=${msg.id}" class="btn btn-sm btn-warning">Editar</a>
+                <button class="btn btn-sm btn-danger" onclick="deleteMensagem(${msg.id})">Excluir</button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    async function deleteMensagem(id) {
+      if (confirm('Deseja realmente excluir esta mensagem rápida?')) {
+        const res = await fetch(`/api/msg-rapidas/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          loadMensagens();
+          document.getElementById('mensagensMsg').innerHTML = '';
+        } else {
+          document.getElementById('mensagensMsg').innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+        }
+      }
+    }
+
+    loadMensagens();
+  </script>
+</body>
+</html>

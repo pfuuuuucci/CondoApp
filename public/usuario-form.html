@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Novo Usuário - CondoApp</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .navbar .back-btn {
+      color: #fff;
+      font-size: 1.7rem;
+      text-decoration: none;
+      margin-left: auto;
+    }
+    .navbar .back-btn:hover {
+      color: #e0e0e0;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-light bg-primary">
+    <div class="container-fluid d-flex align-items-center">
+      <span class="navbar-brand mb-0 h1 text-white">CondoApp</span>
+      <a href="#" class="back-btn ms-auto" onclick="goBack()" title="Voltar">
+        <i class="bi bi-arrow-left"></i>
+      </a>
+    </div>
+  </nav>
+
+  <div class="container mt-4">
+    <div class="card shadow">
+      <div class="card-body">
+        <h4 class="card-title mb-4" id="formTitle">Cadastrar Usuário</h4>
+        <form id="usuarioForm">
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label for="tipo" class="form-label">Tipo de Usuário</label>
+              <select class="form-select" id="tipo" required>
+                <option value="">Selecione...</option>
+                <option value="morador">Morador</option>
+                <option value="mensageiro">Mensageiro</option>
+              </select>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label for="nome" class="form-label">Nome Completo</label>
+              <input type="text" class="form-control" id="nome" required>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label for="login" class="form-label">Login</label>
+              <input type="text" class="form-control" id="login" required>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label for="senhaInicial" class="form-label">Senha Inicial</label>
+              <input type="password" class="form-control" id="senhaInicial" required>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label for="telefone" class="form-label">Telefone</label>
+              <input type="text" class="form-control" id="telefone" placeholder="(11) 99999-9999" required>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label for="email" class="form-label">E-mail</label>
+              <input type="email" class="form-control" id="email" required>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label for="bloco" class="form-label">Bloco</label>
+              <select class="form-select" id="bloco" required>
+                <option value="">Selecione um bloco...</option>
+              </select>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label for="unidade" class="form-label">Unidade</label>
+              <select class="form-select" id="unidade" required>
+                <option value="">Selecione uma unidade...</option>
+              </select>
+            </div>
+          </div></div>
+
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function checkAuth() {
+      const user = JSON.parse(localStorage.getItem('user'));
+      if (!user) {
+        window.location.href = 'login.html';
+        return false;
+      }
+      return true;
+    }
+
+    function goBack() {
+      window.location.href = 'usuarios-list.html';
+    }
+
+    function logout() {
+      localStorage.removeItem('user');
+      window.location.href = "login.html";
+    }
+
+    function setupTelefoneMask() {
+      const telefoneInput = document.getElementById('telefone');
+      telefoneInput.addEventListener('input', function(e) {
+        const x = this.value.replace(/\D/g, '').match(/(\d{0,2})(\d{0,5})(\d{0,4})/);
+        this.value = !x[2] ? x[1] : '(' + x[1] + ') ' + x[2] + (x[3] ? '-' + x[3] : '');
+      });
+    }
+
+    let grupos = [];
+    let unidades = [];
+
+    async function loadBlocos() {
+      try {
+        // Carregar grupos para popular a combo de "bloco"
+        const response = await fetch('/api/grupos');
+        grupos = await response.json();
+        const select = document.getElementById('bloco');
+
+        // Limpar combo
+        select.innerHTML = '<option value="">Selecione um bloco...</option>';
+
+        grupos.forEach(grupo => {
+          const option = document.createElement('option');
+          option.value = grupo.id;
+          option.textContent = grupo.nome || `${grupo.blocoNome}/${grupo.agrupadorNome}`;
+          select.appendChild(option);
+        });
+
+        // Adicionar listener para filtrar unidades quando grupo for selecionado
+        select.addEventListener('change', function() {
+          loadUnidadesPorGrupo(this.value);
+        });
+      } catch (error) {
+        console.error('Erro ao carregar grupos:', error);
+      }
+    }
+
+    async function loadUnidades() {
+      try {
+        const response = await fetch('/api/unidades');
+        unidades = await response.json();
+      } catch (error) {
+        console.error('Erro ao carregar unidades:', error);
+      }
+    }
+
+    async function loadUnidadesPorGrupo(grupoId) {
+      const selectUnidade = document.getElementById('unidade');
+      selectUnidade.innerHTML = '<option value="">Selecione uma unidade...</option>';
+
+      if (!grupoId) return;
+
+      try {
+        // Buscar unidades do grupo selecionado
+        const response = await fetch(`/api/grupos/${grupoId}/unidades`);
+        const unidadesDoGrupo = await response.json();
+
+        unidadesDoGrupo.forEach(unidade => {
+          const option = document.createElement('option');
+          option.value = unidade.nome;
+          option.textContent = unidade.nome;
+          selectUnidade.appendChild(option);
+        });
+      } catch (error) {
+        console.error('Erro ao carregar unidades do grupo:', error);
+      }
+    }
+
+    document.getElementById('usuarioForm').onsubmit = async function(e) {
+      e.preventDefault();
+
+      // Buscar dados do grupo selecionado para pegar o bloco real
+      const grupoId = document.getElementById('bloco').value;
+      const grupoSelecionado = grupos.find(g => g.id == grupoId);
+
+      const formData = {
+        tipo: document.getElementById('tipo').value,
+        nome: document.getElementById('nome').value,
+        login: document.getElementById('login').value,
+        senhaInicial: document.getElementById('senhaInicial').value,
+        telefone: document.getElementById('telefone').value,
+        email: document.getElementById('email').value,
+        bloco: grupoSelecionado ? grupoSelecionado.blocoNome : '',
+        unidade: document.getElementById('unidade').value
+      };
+
+      try {
+        const response = await fetch('/api/cadastrar-usuario', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(formData)
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          alert('Usuário cadastrado com sucesso! E-mail com credenciais enviado.');
+          window.location.href = 'usuarios-list.html';
+        } else {
+          alert('Erro ao cadastrar usuário: ' + result.error);
+        }
+      } catch (error) {
+        console.error('Erro ao cadastrar usuário:', error);
+        alert('Erro ao cadastrar usuário');
+      }
+    };
+
+    // Inicializar
+    checkAuth();
+    loadBlocos();
+    loadUnidades();
+    setupTelefoneMask();
+  </script>
+</body>
+</html>

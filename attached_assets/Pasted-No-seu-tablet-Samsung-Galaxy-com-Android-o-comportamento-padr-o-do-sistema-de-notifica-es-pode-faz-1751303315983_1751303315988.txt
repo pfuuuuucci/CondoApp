@@ -1,0 +1,30 @@
+No seu tablet Samsung Galaxy com Android, o comportamento padrão do sistema de notificações pode fazer com que apenas a notificação mais recente de um app seja exibida, especialmente se o próprio app estiver sobrescrevendo as notificações anteriores ao usar o mesmo ID de notificação. Para garantir que você receba e visualize todas as notificações de um app, considere os seguintes pontos e soluções:
+
+1. Ative o Histórico de Notificações
+
+Vá em Configurações > Notificações > Configurações avançadas > Histórico de notificações e ative essa função. Assim, mesmo que uma notificação seja substituída, você poderá ver todas as notificações recebidas recentemente em ordem cronológica.
+
+2. Ajuste as Configurações do App
+
+Acesse Configurações > Notificações > Notificações de apps e verifique se o app está autorizado a enviar todos os tipos de notificações. Explore as categorias de notificação do app para garantir que todas estejam ativadas.
+
+3. Repita Alarmes de Notificação
+
+Ative lembretes de notificação:
+
+Configurações > Acessibilidade > Lembretes de notificação (ou “Notification reminders”).
+
+Escolha o intervalo e quais apps devem repetir o alerta. Assim, se você não visualizar uma notificação, o tablet pode alertar novamente até que você leia.
+
+4. Sobreposição de Notificações
+
+Se o app só mostra a última notificação, provavelmente ele está usando o mesmo ID para todas as notificações. Isso é uma limitação do próprio app, não do Android. Para que múltiplas notificações apareçam, o desenvolvedor do app deve usar IDs únicos para cada notificação enviada.
+
+5. Evite que o app entre em “deep sleep”
+
+Certifique-se de que o app não está na lista de apps em “sono profundo” ou “economia de bateria”, pois isso pode impedir notificações regulares.
+
+Vá em Configurações > Bateria e cuidado do dispositivo > Bateria > Limites de uso em segundo plano e adicione o app à lista de “Apps que nunca dormem”.
+
+Limitações:
+Se o app não foi desenvolvido para mostrar múltiplas notificações (usando IDs únicos), você só verá a mais recente. Nesse caso, apenas o desenvolvedor pode corrigir esse comportamento.

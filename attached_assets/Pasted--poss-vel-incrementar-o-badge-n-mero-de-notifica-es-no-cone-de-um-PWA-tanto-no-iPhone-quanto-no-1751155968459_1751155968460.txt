@@ -1,0 +1,71 @@
+É possível incrementar o badge (número de notificações) no ícone de um PWA tanto no iPhone quanto no Android, mas a implementação difere entre plataformas e requer configurações específicas. Abaixo detalho os requisitos e soluções:
+
+📱 Para iPhone (iOS)
+Suporte a notificações push em PWAs
+A partir do iOS 16.4, PWAs instalados na tela inicial podem receber notificações push e badges.
+
+Incremento do badge
+
+O badge só pode ser atualizado via payload da notificação push, enviado pelo servidor.
+
+O payload deve incluir o valor exato do badge no campo "badge" (ex: {"aps": {"badge": 5}}).
+
+Não é possível incrementar localmente enquanto o app está em segundo plano. O servidor deve rastrear o contador e enviar o total acumulado.
+
+🤖 Para Android
+API de Badge
+Use navigator.setAppBadge() no service worker para definir o número:
+
+javascript
+self.addEventListener("push", (event) => {
+  const unreadCount = 5; // Valor dinâmico do payload
+  navigator.setAppBadge(unreadCount);
+});
+Problemas conhecidos
+
+O badge pode aparecer no ícone do Chrome em vez do PWA instalado.
+
+Alguns dispositivos Android exibem apenas um ponto azul no lugar do número.
+
+⚙️ Implementação prática
+Backend (Node.js)
+
+Mantenha um contador de notificações não lidas por usuário.
+
+Inclua esse valor no payload das notificações push (campo badge para iOS e unreadCount para Android).
+
+Service Worker
+Atualize o badge ao receber a notificação:
+
+javascript
+self.addEventListener("push", (event) => {
+  const data = event.data.json();
+  const unreadCount = data.unreadCount;
+
+  // Atualiza badge 
+  if (navigator.setAppBadge) navigator.setAppBadge(unreadCount);
+
+  // Exibe a notificação
+  self.registration.showNotification("Título", { body: data.message });
+});
+⚠️ Limitações
+iOS:
+
+O incremento automático sem servidor é impossível.
+
+Usuários devem instalar o PWA na tela inicial (iOS ≥16.4).
+
+Android:
+
+Compatibilidade variável entre dispositivos.
+
+O badge pode não aparecer no ícone do PWA em alguns casos.
+
+✅ Conclusão
+Sim, é possível incrementar o badge, mas:
+
+iOS: Depende do envio do valor total pelo servidor.
+
+Android: Use navigator.setAppBadge() no service worker, mas teste em diferentes dispositivos devido a inconsistências.
+
+Para ambos, o servidor deve gerenciar o contador de notificações não lidas e enviá-lo no payload.

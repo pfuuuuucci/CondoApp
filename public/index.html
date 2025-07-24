@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CondoApp</title>
+
+  <!-- PWA Meta Tags -->
+  <meta name="theme-color" content="#1B4D72">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="CondoApp">
+  <link rel="apple-touch-icon" href="attached_assets/CondoApp_1750367572078.png">
+
+  <!-- Manifest -->
+  <link rel="manifest" href="manifest.json">
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body {
+      min-height: 100vh;
+      background: linear-gradient(135deg, #1B4D72 0%, #2563EB 100%);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .welcome-container {
+      border-radius: 18px;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.15);
+      background: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2.5rem;
+      max-width: 350px;
+      width: 100%;
+    }
+    .logo-container {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      margin-bottom: 1.5rem;
+    }
+    .logo-container img {
+      width: 280px;
+      height: auto;
+      max-width: 100%;
+    }
+    .welcome-text {
+      color: #1B4D72;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-weight: 600;
+      font-size: 1.1rem;
+      line-height: 1.4;
+      margin-bottom: 1.5rem;
+      width: 100%;
+    }
+    .version-info {
+      color: #1B4D72;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-weight: 600;
+      font-size: 0.9rem;
+      margin-bottom: 1.5rem;
+      width: 100%;
+    }
+    .fallback-logo {
+      color: #1B4D72;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-size: 2.5rem;
+      font-weight: bold;
+      margin-bottom: 1.5rem;
+    }
+    .btn-enter {
+      width: 100%;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="welcome-container">
+    <div class="logo-container">
+      <img src="assets/logo-condoapp.png" alt="CondoApp Logo" 
+           onerror="this.style.display='none'; document.getElementById('logoFallback').style.display='block';">
+    </div>
+    
+    <div id="logoFallback" class="fallback-logo" style="display: none;">
+      CondoApp
+    </div>
+    
+    <p class="welcome-text">Bem-vindo ao seu app de comunicação de condomínio!</p>
+
+    <!-- Versão do App -->
+    <div class="version-info">
+      <small id="buildInfo">
+        Deploy: <span id="deployVersion">Carregando...</span>
+      </small>
+    </div>
+
+    <a href="login.html" class="btn btn-primary btn-lg btn-enter">Entrar</a>
+  </div>
+
+  <script>
+    // Buscar versão do deploy
+    document.addEventListener('DOMContentLoaded', async function() {
+      const deployVersion = document.getElementById('deployVersion');
+      if (deployVersion) {
+        try {
+          const response = await fetch('/api/version');
+          const data = await response.json();
+
+          // Formato de duas linhas: deploy + timestamp em cima, versão embaixo
+          deployVersion.innerHTML = `
+            <div style="font-size: 0.8rem; line-height: 1.2;">
+              ${data.deployed_at}<br>
+              <span style="font-family: monospace; opacity: 0.8;">v${data.version}</span>
+            </div>
+          `;
+        } catch (error) {
+          deployVersion.textContent = 'Erro ao carregar versão';
+        }
+      }
+    });
+
+    // Registrar Service Worker para PWA
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js')
+          .then(function(registration) {
+            console.log('PWA: ServiceWorker registrado com sucesso');
+          })
+          .catch(function(error) {
+            console.log('PWA: Falha ao registrar ServiceWorker');
+          });
+      });
+    }
+  </script>
+</body>
+</html>

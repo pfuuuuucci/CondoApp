@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cadastro de Síndico - CondoApp</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light d-flex align-items-center" style="height: 100vh;">
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-12 col-sm-8 col-md-6 col-lg-4">
+        <div class="card shadow p-4">
+          <h2 class="mb-4 text-center">Cadastro de Síndico</h2>
+          <form id="cadastroForm">
+            <div class="mb-3">
+              <input type="text" id="login" class="form-control" placeholder="Login" required>
+            </div>
+            <div class="mb-3">
+              <input type="text" id="nome" class="form-control" placeholder="Nome Completo" required>
+            </div>
+            <div class="mb-3">
+              <input type="email" id="email" class="form-control" placeholder="E-mail" required>
+            </div>
+            <div class="mb-3">
+              <input type="tel" id="celular" class="form-control" placeholder="(XX) 99999-9999" pattern="\(\d{2}\) \d{4,5}-\d{4}" required>
+            </div>
+            <div class="mb-3">
+              <label for="bloco" class="form-label">Bloco</label>
+              <select class="form-select" id="bloco" required>
+                <option value="">Selecione um grupo...</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="unidade" class="form-label">Unidade</label>
+              <select class="form-select" id="unidade" required>
+                <option value="">Selecione uma unidade...</option>
+              </select>
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Cadastrar</button>
+            <div id="msg" class="text-danger mt-3 text-center"></div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    let grupos = [];
+    let unidades = [];
+
+    async function carregarBlocos() {
+      try {
+        // Carregar grupos para popular a combo de "bloco"
+        const response = await fetch('/api/grupos');
+        grupos = await response.json();
+        const blocoSelect = document.getElementById('bloco');
+
+        // Limpar combo
+        blocoSelect.innerHTML = '<option value="">Selecione um bloco...</option>';
+
+        grupos.forEach(grupo => {
+          const option = document.createElement('option');
+          option.value = grupo.id;
+          option.textContent = grupo.nome || `${grupo.blocoNome}/${grupo.agrupadorNome}`;
+          blocoSelect.appendChild(option);
+        });
+
+        // Adicionar listener para filtrar unidades quando grupo for selecionado
+        blocoSelect.addEventListener('change', function() {
+          carregarUnidadesPorGrupo(this.value);
+        });
+      } catch (error) {
+        console.error('Erro ao carregar grupos:', error);
+        alert('Erro ao carregar grupos');
+      }
+    }
+
+    async function carregarUnidades() {
+      try {
+        const response = await fetch('/api/unidades');
+        unidades = await response.json();
+      } catch (error) {
+        console.error('Erro ao carregar unidades:', error);
+        alert('Erro ao carregar unidades');
+      }
+    }
+
+    async function carregarUnidadesPorGrupo(grupoId) {
+      const unidadeSelect = document.getElementById('unidade');
+      unidadeSelect.innerHTML = '<option value="">Selecione uma unidade...</option>';
+
+      if (!grupoId) return;
+
+      try {
+        // Buscar unidades do grupo selecionado
+        const response = await fetch(`/api/grupos/${grupoId}/unidades`);
+        const unidadesDoGrupo = await response.json();
+
+        unidadesDoGrupo.forEach(unidade => {
+          const option = document.createElement('option');
+          option.value = unidade.nome;
+          option.textContent = unidade.nome;
+          unidadeSelect.appendChild(option);
+        });
+      } catch (error) {
+        console.error('Erro ao carregar unidades do grupo:', error);
+        alert('Erro ao carregar unidades do grupo');
+      }
+    }
+
+
+    document.getElementById('cadastroForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      // Buscar dados do grupo selecionado para pegar o bloco real
+      const grupoId = document.getElementById('bloco').value;
+      const grupoSelecionado = grupos.find(g => g.id == grupoId);
+
+      const userData = {
+        login: document.getElementById('login').value,
+        nome: document.getElementById('nome').value,
+        email: document.getElementById('email').value,
+        celular: document.getElementById('celular').value,
+        bloco: grupoSelecionado ? grupoSelecionado.blocoNome : '',
+        unidade: document.getElementById('unidade').value
+      };
+
+      const res = await fetch('/api/cadastro-sindico', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userData)
+      });
+
+      const data = await res.json();
+      if (data.success) {
+         window.location.href = `validar-token.html?email=${encodeURIComponent(userData.email)}&source=cadastro&msg=token_enviado`;
+      } else {
+        document.getElementById('msg').textContent = data.error || 'Erro no cadastro';
+      }
+    });
+
+
+
+
+    // Máscara para celular
+    // Máscara simplificada para celular
+    document.getElementById('celular').addEventListener('input', function(e) {
+      const x = this.value.replace(/\D/g, '').match(/(\d{0,2})(\d{0,5})(\d{0,4})/);
+      this.value = !x[2] ? x[1] : '(' + x[1] + ') ' + x[2] + (x[3] ? '-' + x[3] : '');
+    });
+
+    // Carregar blocos e unidades ao carregar a página
+    window.addEventListener('load', () => {
+      carregarBlocos();
+      carregarUnidades();
+    });
+  </script>
+</body>
+</html>
