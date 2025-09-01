@@ -1,6 +1,13 @@
 
 # 🏢 CondoApp - Sistema de Comunicação para Condomínios
 
+## 👥 Integrantes
+- Paulo Fucci
+- Diogo Lima
+- Emanuelly de Lucena
+- Gabriel Parra
+- Pedro Macedo
+
 ![CondoApp](public/assets/logo-condoapp.png)
 
 **CondoApp** é um sistema web completo de comunicação para condomínios, desenvolvido como Progressive Web App (PWA) com Node.js, Express.js, PostgreSQL e Bootstrap.
