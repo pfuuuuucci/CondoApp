@@ -155,6 +155,23 @@ async function initializeTables() {
       )
     `);
 
+    // Tabela de preferências biométricas
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_biometric_preferences (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        biometric_enabled BOOLEAN DEFAULT false,
+        biometric_registered_at TIMESTAMP,
+        device_fingerprint TEXT NOT NULL,
+        last_used_at TIMESTAMP,
+        credential_id TEXT NOT NULL,
+        credential_data JSONB NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, device_fingerprint)
+      )
+    `);
+
     console.log('✅ Tabelas criadas/verificadas com sucesso!');
   } catch (error) {
     console.error('❌ Erro ao criar tabelas:', error);

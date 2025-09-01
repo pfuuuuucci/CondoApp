@@ -1,5 +1,5 @@
 const bcrypt = require('bcryptjs');
-console.log(bcrypt.hashSync('abcd', 10));
+console.log(bcrypt.hashSync('fucci', 10));
 
 //EXEXUTAR NO TERMINAL node gera-hash.js
 

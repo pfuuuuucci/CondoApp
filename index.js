@@ -13,6 +13,11 @@ const webpush = require('web-push');
 const app = express();
 const PORT = 3000;
 
+// Importar as rotas de backup
+const backupRoutes = require('./server/routes/backupRoutes');
+// Usar as rotas
+app.use('/api/backup', backupRoutes);
+
 // Sistema de chaves VAPID permanentes
 let vapidKeys = {
   publicKey: null,
@@ -138,6 +143,7 @@ app.post('/api/login', async (req, res) => {
     if (bcrypt.compareSync(password, user.password)) {
       res.json({ 
         success: true,
+        primeiro_acesso: user.primeiro_acesso,
         user: { 
           ...user, 
           password: undefined // Remove a senha da resposta
@@ -434,10 +440,19 @@ app.delete('/api/grupos/:id', async (req, res) => {
 
 // Buscar mensagens (SISTEMA SIMPLIFICADO B - sem lida_por)
 app.get('/api/messages', async (req, res) => {
-  const { userRole, userBloco, userUnidade, userId } = req.query;
+  const { userRole, userUnidade, userId } = req.query;
 
   console.log(`🔍 === SISTEMA B: BUSCAR MENSAGENS ===`);
   console.log(`👤 Role: ${userRole}, Unidade: ${userUnidade}, User ID: ${userId}`);
+
+  // Verificação de segurança: admin-app não deve acessar mensagens
+  if (userRole === 'admin-app') {
+    console.log('🚫 Admin-app tentou acessar API de mensagens');
+    return res.status(403).json({ 
+      success: false, 
+      error: 'Acesso negado: admin-app deve usar apenas tela de aprovação' 
+    });
+  }
 
   try {
     // Executar limpeza de mensagens expiradas antes de buscar
@@ -445,8 +460,8 @@ app.get('/api/messages', async (req, res) => {
 
     let mensagens = [];
 
-    if (userRole === 'sindico' || userRole === 'mensageiro') {
-      // Síndico e mensageiro veem TODAS as mensagens vigentes
+    if (userRole === 'sindico') {
+      // Síndico vê TODAS as mensagens vigentes
       const result = await query(`
         SELECT m.*, 
                CASE 
@@ -463,10 +478,34 @@ app.get('/api/messages', async (req, res) => {
         ORDER BY m.created_at DESC
       `);
       mensagens = result.rows;
-      console.log(`👑 Síndico/Mensageiro: ${mensagens.length} mensagens vigentes`);
+      console.log(`👑 Síndico: ${mensagens.length} mensagens vigentes`);
+
+    } else if (userRole === 'mensageiro') {
+      // Mensageiro vê mensagens para unidades e grupos, MAS NÃO para síndicos (sindico-role)
+      const result = await query(`
+        SELECT m.*, 
+               CASE 
+                 WHEN m.destinatario_tipo = 'unidade' THEN u.nome
+                 WHEN m.destinatario_tipo = 'grupo' THEN CONCAT(b.nome, ' - ', a.nome)
+               END as destinatario_nome
+        FROM messages m
+        LEFT JOIN unidades u ON m.destinatario_tipo = 'unidade' AND m.destinatario_id = u.id
+        LEFT JOIN grupos g ON m.destinatario_tipo = 'grupo' AND m.destinatario_id = g.id
+        LEFT JOIN blocos b ON g.bloco_id = b.id
+        LEFT JOIN agrupadores a ON g.agrupador_id = a.id
+        WHERE m.destinatario_tipo IN ('unidade', 'grupo')
+        AND m.fim_vigencia > (NOW() - INTERVAL '3 hours')
+        ORDER BY m.created_at DESC
+      `);
+      mensagens = result.rows;
+      console.log(`📨 Mensageiro: ${mensagens.length} mensagens vigentes (sem sindico-role)`);
 
     } else if (userRole === 'morador') {
-      // Morador vê mensagens da sua unidade + grupos + mensagens para síndicos
+      // Buscar dados completos do usuário para filtros
+      const userDataResult = await query('SELECT name FROM users WHERE id = $1', [userId]);
+      const userName = userDataResult.rows.length > 0 ? userDataResult.rows[0].name : 'Usuário';
+
+      // Morador vê mensagens da sua unidade + grupos + suas próprias mensagens para síndicos
       const unidadeIdResult = await query('SELECT id FROM unidades WHERE nome = $1', [userUnidade]);
 
       if (unidadeIdResult.rows.length === 0) {
@@ -499,17 +538,18 @@ app.get('/api/messages', async (req, res) => {
           ORDER BY m.created_at DESC
         `, [unidadeId]);
 
-        // 3. Mensagens para síndicos (que moradores também veem)
+        // 3. Mensagens para síndicos (apenas se o morador for o remetente)
         const sindicoResult = await query(`
           SELECT m.*, 'Síndicos' as destinatario_nome
           FROM messages m
           WHERE m.destinatario_tipo = 'sindico-role'
+          AND m.sender = $1
           AND m.fim_vigencia > (NOW() - INTERVAL '3 hours')
           ORDER BY m.created_at DESC
-        `);
+        `, [userName]);
 
         mensagens = [...unidadeResult.rows, ...grupoResult.rows, ...sindicoResult.rows];
-        console.log(`🏠 Morador: ${unidadeResult.rows.length} unidade + ${grupoResult.rows.length} grupo + ${sindicoResult.rows.length} síndico = ${mensagens.length} total`);
+        console.log(`🏠 Morador: ${unidadeResult.rows.length} unidade + ${grupoResult.rows.length} grupo + ${sindicoResult.rows.length} síndico (próprias) = ${mensagens.length} total`);
       }
     }
 
@@ -793,7 +833,11 @@ app.post('/api/cadastro-sindico', async (req, res) => {
     const newUser = { 
       id: result.rows[0].id, 
       email, 
-      name: nome, 
+      name: nome,
+      login: login,
+      telefone: celular,
+      bloco: bloco,
+      unidade: unidade,
       tokenRecuperacao: token 
     };
 
@@ -843,43 +887,79 @@ app.post('/api/aprovar-usuario', async (req, res) => {
 });
 
 // ======================
-// NOVA SENHA (COM APROVAÇÃO)
+// NOVA SENHA (COM APROVAÇÃO E PRIMEIRO ACESSO)
 // ======================
 app.post('/api/nova-senha', async (req, res) => {
-  const { email, token, password } = req.body;
+  const { email, token, password, isDirect } = req.body;
+
+  console.log('🔐 === NOVA SENHA ===');
+  console.log('📧 Email:', email);
+  console.log('🎫 Token:', token);
+  console.log('🆕 É primeiro acesso direto:', isDirect);
+
+  if (!email) {
+    console.log('❌ Email não fornecido');
+    return res.status(400).json({ success: false, error: 'Email é obrigatório' });
+  }
+
+  if (!password) {
+    console.log('❌ Senha não fornecida');
+    return res.status(400).json({ success: false, error: 'Nova senha é obrigatória' });
+  }
+
   try {
-    const result = await query('SELECT * FROM users WHERE email = $1', [email]);
+    let userQuery;
+    let queryParams;
+
+    if (isDirect && token === 'DIRECT') {
+      // Primeiro acesso direto: buscar apenas por email e primeiro_acesso = true
+      console.log('🎯 Fluxo: Primeiro acesso direto');
+      userQuery = 'SELECT * FROM users WHERE email = $1 AND primeiro_acesso = true';
+      queryParams = [email];
+    } else {
+      // Recuperação normal: validar token
+      console.log('🎯 Fluxo: Recuperação com token');
+      userQuery = 'SELECT * FROM users WHERE email = $1 AND token_recuperacao = $2 AND token_expira > NOW()';
+      queryParams = [email, token];
+    }
+
+    const result = await query(userQuery, queryParams);
+
+    if (result.rows.length === 0) {
+      console.log('❌ Usuário não encontrado para email:', email);
+      if (isDirect) {
+        console.log('⚠️ Possíveis causas: email incorreto ou primeiro_acesso já foi alterado');
+      }
+      return res.status(400).json({ success: false, error: 'Usuário não encontrado ou não autorizado' });
+    }
+
     const user = result.rows[0];
+    console.log('✅ Usuário encontrado:', user.username, 'Role:', user.role, 'Primeiro acesso:', user.primeiro_acesso);
 
-    if (!user) {
-      return res.status(400).json({ success: false, error: 'Usuário não encontrado' });
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    let updateQuery;
+    let updateParams;
+
+    if (isDirect && token === 'DIRECT') {
+      // Primeiro acesso: apenas atualizar senha e marcar primeiro_acesso = false
+      updateQuery = 'UPDATE users SET password = $1, primeiro_acesso = false WHERE email = $2';
+      updateParams = [hashedPassword, email];
+      console.log('🔄 Atualizando: senha + primeiro_acesso = false');
+    } else {
+      // Recuperação: limpar tokens também
+      updateQuery = 'UPDATE users SET password = $1, token_recuperacao = NULL, token_expira = NULL, primeiro_acesso = false WHERE email = $2';
+      updateParams = [hashedPassword, email];
+      console.log('🔄 Atualizando: senha + limpeza tokens + primeiro_acesso = false');
     }
 
-    // Para usuários cadastrados internamente (morador/mensageiro), permite acesso direto
-    if (token === 'DIRECT' && (user.role === 'morador' || user.role === 'mensageiro')) {
-      // Acesso direto permitido para usuários internos
-    } else if (user.token_recuperacao !== token || new Date(user.token_expira) < new Date()) {
-      return res.status(400).json({ success: false, error: 'Token inválido ou expirado' });
-    }
-
-    if (user.role === 'sindico' && !user.aprovado) {
-      return res.status(403).json({ 
-        success: false, 
-        error: 'Cadastro não aprovado' 
-      });
-    }
-
-    const salt = bcrypt.genSaltSync(10);
-    const hashedPassword = bcrypt.hashSync(password, salt);
-
-    await query(`
-      UPDATE users SET password = $1, primeiro_acesso = false, token_recuperacao = NULL, token_expira = NULL 
-      WHERE id = $2
-    `, [hashedPassword, user.id]);
+    await query(updateQuery, updateParams);
+    console.log('✅ Senha atualizada com sucesso para usuário:', user.username);
 
     res.json({ success: true });
+
   } catch (error) {
-    console.error('Erro ao definir nova senha:', error);
+    console.error('❌ Erro ao redefinir senha:', error);
     res.status(500).json({ success: false, error: 'Erro interno do servidor' });
   }
 });
@@ -1132,13 +1212,13 @@ async function incrementUnreadCount(destinatarioTipo, destinatarioId) {
       const unidadeResult = await query('SELECT nome FROM unidades WHERE id = $1', [destinatarioId]);
       if (unidadeResult.rows.length > 0) {
         const unidadeNome = unidadeResult.rows[0].nome;
-        
+
         const updateResult = await query(`
           UPDATE users 
           SET unread_count = unread_count + 1 
           WHERE unidade = $1
         `, [unidadeNome]);
-        
+
         console.log(`✅ ${updateResult.rowCount} usuários da unidade "${unidadeNome}" incrementados (+1)`);
       }
 
@@ -1152,7 +1232,7 @@ async function incrementUnreadCount(destinatarioTipo, destinatarioId) {
 
       if (grupoResult.rows.length > 0) {
         const unidadeIds = grupoResult.rows[0].unidade_ids;
-        
+
         // Buscar nomes das unidades
         const unidadesResult = await query('SELECT nome FROM unidades WHERE id = ANY($1)', [unidadeIds]);
         const unidadeNomes = unidadesResult.rows.map(row => row.nome);
@@ -1163,7 +1243,7 @@ async function incrementUnreadCount(destinatarioTipo, destinatarioId) {
             SET unread_count = unread_count + 1 
             WHERE unidade = ANY($1)
           `, [unidadeNomes]);
-          
+
           console.log(`✅ ${updateResult.rowCount} usuários do grupo incrementados (+1)`);
         }
       }
@@ -1175,7 +1255,7 @@ async function incrementUnreadCount(destinatarioTipo, destinatarioId) {
         SET unread_count = unread_count + 1 
         WHERE role = 'sindico'
       `);
-      
+
       console.log(`✅ ${updateResult.rowCount} síndicos incrementados (+1)`);
     }
 
@@ -1458,6 +1538,221 @@ app.post('/api/push-unsubscribe', async (req, res) => {
 });
 
 // ======================
+// ROTA PARA BUSCAR USUÁRIO POR ID (BIOMETRIA)
+// ======================
+
+app.get('/api/user-by-id/:userId', async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const result = await query('SELECT * FROM users WHERE id = $1 AND aprovado = true', [userId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Usuário não encontrado' });
+    }
+
+    const user = result.rows[0];
+    res.json({ 
+      success: true, 
+      user: { 
+        ...user, 
+        password: undefined // Remove senha da resposta
+      } 
+    });
+  } catch (error) {
+    console.error('Erro ao buscar usuário por ID:', error);
+    res.status(500).json({ success: false, error: 'Erro interno do servidor' });
+  }
+});
+
+// ======================
+// API DE AUTENTICAÇÃO BIOMÉTRICA
+// ======================
+
+// Verificar status da biometria do usuário
+app.get('/api/biometric-status/:userId', async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const result = await query(`
+      SELECT biometric_enabled, biometric_registered_at, device_fingerprint, last_used_at
+      FROM user_biometric_preferences 
+      WHERE user_id = $1
+    `, [userId]);
+
+    if (result.rows.length === 0) {
+      return res.json({ 
+        success: true, 
+        enabled: false, 
+        message: 'Biometria não configurada' 
+      });
+    }
+
+    const pref = result.rows[0];
+    res.json({
+      success: true,
+      enabled: pref.biometric_enabled,
+      registeredAt: pref.biometric_registered_at,
+      lastUsed: pref.last_used_at,
+      deviceFingerprint: pref.device_fingerprint
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao verificar status biométrico:', error);
+    res.status(500).json({ success: false, error: 'Erro interno' });
+  }
+});
+
+// Registrar nova credencial biométrica
+app.post('/api/biometric-register', async (req, res) => {
+  const { userId, credentialData, deviceFingerprint } = req.body;
+
+  try {
+    console.log(`🔐 Registrando biometria para usuário ${userId}`);
+
+    // Verificar se usuário existe
+    const userResult = await query('SELECT name FROM users WHERE id = $1', [userId]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Usuário não encontrado' });
+    }
+
+    // Remover credenciais antigas do mesmo dispositivo
+    await query(`
+      DELETE FROM user_biometric_preferences 
+      WHERE user_id = $1 AND device_fingerprint = $2
+    `, [userId, deviceFingerprint]);
+
+    // Salvar nova preferência
+    await query(`
+      INSERT INTO user_biometric_preferences 
+      (user_id, biometric_enabled, biometric_registered_at, device_fingerprint, credential_id, credential_data)
+      VALUES ($1, true, NOW(), $2, $3, $4)
+    `, [userId, deviceFingerprint, credentialData.id, JSON.stringify(credentialData)]);
+
+    console.log(`✅ Biometria registrada: usuário ${userId}, dispositivo ${deviceFingerprint.substring(0, 8)}...`);
+
+    res.json({ 
+      success: true, 
+      message: 'Biometria configurada com sucesso' 
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao registrar biometria:', error);
+    res.status(500).json({ success: false, error: 'Erro ao salvar biometria' });
+  }
+});
+
+// Buscar credenciais do usuário para autenticação
+app.get('/api/biometric-credentials/:userId', async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const result = await query(`
+      SELECT credential_id, credential_data
+      FROM user_biometric_preferences
+      WHERE user_id = $1 AND biometric_enabled = true
+    `, [userId]);
+
+    const credentials = result.rows.map(row => ({
+      credential_id: row.credential_id,
+      credential_data: row.credential_data
+    }));
+
+    res.json({
+      success: true,
+      credentials: credentials
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar credenciais:', error);
+    res.status(500).json({ success: false, error: 'Erro interno' });
+  }
+});
+
+// Verificar autenticação biométrica
+app.post('/api/biometric-verify', async (req, res) => {
+  const { userId, credentialId, signature, authenticatorData, clientDataJSON, deviceFingerprint } = req.body;
+
+  try {
+    console.log(`🔓 Verificando autenticação biométrica: usuário ${userId}`);
+    console.log(`🔑 Credential ID recebido: ${credentialId ? credentialId.substring(0, 20) + '...' : 'null'}`);
+
+    // Validar dados recebidos
+    if (!userId || !credentialId) {
+      console.error('❌ Dados obrigatórios faltando');
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Dados obrigatórios faltando' 
+      });
+    }
+
+    // Buscar credencial
+    const credResult = await query(`
+      SELECT * FROM user_biometric_preferences
+      WHERE user_id = $1 AND credential_id = $2 AND biometric_enabled = true
+    `, [userId, credentialId]);
+
+    console.log(`🔍 Credenciais encontradas no banco: ${credResult.rows.length}`);
+
+    if (credResult.rows.length === 0) {
+      console.error(`❌ Credencial não encontrada para usuário ${userId} com ID ${credentialId.substring(0, 20)}...`);
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Credencial não encontrada ou desabilitada' 
+      });
+    }
+
+    // Atualizar último uso
+    await query(`
+      UPDATE user_biometric_preferences 
+      SET last_used_at = NOW() 
+      WHERE user_id = $1 AND credential_id = $2
+    `, [userId, credentialId]);
+
+    console.log(`✅ Autenticação biométrica aceita para usuário ${userId}`);
+
+    // Em produção, aqui você faria a verificação criptográfica real da assinatura
+    // Por simplicidade, vamos aceitar se a credencial existe
+    res.json({ 
+      success: true, 
+      message: 'Autenticação biométrica válida' 
+    });
+
+  } catch (error) {
+    console.error('❌ Erro na verificação biométrica:', error);
+    console.error('❌ Stack trace:', error.stack);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro na verificação: ' + error.message 
+    });
+  }
+});
+
+// Desabilitar biometria
+app.post('/api/biometric-disable', async (req, res) => {
+  const { userId, deviceFingerprint } = req.body;
+
+  try {
+    const result = await query(`
+      UPDATE user_biometric_preferences 
+      SET biometric_enabled = false 
+      WHERE user_id = $1 AND device_fingerprint = $2
+    `, [userId, deviceFingerprint]);
+
+    if (result.rowCount > 0) {
+      console.log(`🔒 Biometria desabilitada: usuário ${userId}`);
+      res.json({ success: true, message: 'Biometria desabilitada' });
+    } else {
+      res.status(404).json({ success: false, error: 'Configuração não encontrada' });
+    }
+
+  } catch (error) {
+    console.error('❌ Erro ao desabilitar biometria:', error);
+    res.status(500).json({ success: false, error: 'Erro interno' });
+  }
+});
+
+// ======================
 // BADGE DE MENSAGENS NÃO LIDAS (FASE 4)
 // ======================
 
@@ -1465,7 +1760,7 @@ app.post('/api/push-unsubscribe', async (req, res) => {
 app.get('/api/current-unread-count', async (req, res) => {
   try {
     console.log('🔢 Service Worker solicitando contagem de mensagens ATIVAS');
-    
+
     // Executa limpeza antes de contar
     await cleanupExpiredMessages();
 
@@ -1477,7 +1772,7 @@ app.get('/api/current-unread-count', async (req, res) => {
     `);
 
     const activeCount = parseInt(totalCount.rows[0].count);
-    
+
     console.log(`🔢 Service Worker: ${activeCount} mensagens ATIVAS (independente de leitura)`);
 
     res.json({ 

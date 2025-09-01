@@ -4,7 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "backup": "node backup-database.js",
+    "restore": "node backup-database.js restore",
+    "list-backups": "node backup-database.js list",
+    "downloadbkp": "./download-backup.sh"
   },
   "keywords": [],
   "author": "",
