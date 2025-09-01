@@ -5,7 +5,7 @@
 - Paulo Fucci
 - Diogo Lima
 - Emanuelly Oliveira de Lucena
-- Gabriel Parra
+- Gabriel Parra de Luna
 - Pedro Henrique Angelo de Macedo
 
 ![CondoApp](public/assets/logo-condoapp.png)
