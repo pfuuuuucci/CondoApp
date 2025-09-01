@@ -22,6 +22,7 @@
               <input type="password" id="password" class="form-control" placeholder="Senha" required>
             </div>
             <button type="submit" class="btn btn-primary w-100">Entrar</button>
+            <button type="button" id="biometricLoginBtn" class="btn btn-secondary w-100 mt-2" style="display:none;">🔐 Entrar com Biometria</button>
             <div id="msg" class="text-danger mt-3 text-center"></div>
           </form>
 
@@ -36,6 +37,101 @@
       </div>
     </div>
   </div>
-  <script src="script.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="biometric-auth.js"></script>
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        localStorage.setItem('user', JSON.stringify(data.user));
+
+        // Verificar se usuário tem biometria após login bem-sucedido
+        await checkBiometricAfterLogin(data.user);
+
+        if (data.primeiro_acesso) {
+          window.location.href = 'nova-senha.html?direct=true';
+        } else {
+          window.location.href = 'dashboard.html';
+        }
+      } else {
+        document.getElementById('msg').textContent = data.error;
+      }
+    });
+
+    // Verificar biometria ao carregar página
+    document.addEventListener('DOMContentLoaded', async () => {
+      const lastUser = localStorage.getItem('lastUsername');
+      const biometricEnabled = localStorage.getItem('biometric_enabled');
+
+      if (lastUser && biometricEnabled === 'true' && window.biometricAuth && window.biometricAuth.isSupported) {
+        document.getElementById('username').value = lastUser;
+        document.getElementById('biometricLoginBtn').style.display = 'block';
+      }
+    });
+
+    // Função para verificar biometria após login
+    async function checkBiometricAfterLogin(user) {
+      if (window.biometricAuth && window.biometricAuth.isSupported) {
+        try {
+          const status = await window.biometricAuth.checkBiometricStatus(user.id);
+
+          if (status === 'active') {
+            // Salvar usuário para próximo login biométrico
+            localStorage.setItem('lastUsername', user.username);
+            localStorage.setItem('lastUserId', user.id);
+          }
+        } catch (error) {
+          console.log('Erro ao verificar biometria após login:', error);
+        }
+      }
+    }
+
+    // Login biométrico
+    document.getElementById('biometricLoginBtn').addEventListener('click', async () => {
+      const lastUserId = localStorage.getItem('lastUserId');
+      const lastUsername = localStorage.getItem('lastUsername');
+
+      if (!lastUserId || !lastUsername) {
+        alert('Dados de login biométrico não encontrados');
+        return;
+      }
+
+      try {
+        document.getElementById('biometricLoginBtn').textContent = '🔐 Verificando...';
+        document.getElementById('biometricLoginBtn').disabled = true;
+
+        const success = await window.biometricAuth.authenticateWithBiometric(lastUserId);
+
+        if (success) {
+          // Buscar dados atualizados do usuário
+          const response = await fetch(`/api/user-by-id/${lastUserId}`);
+          const userData = await response.json();
+
+          if (userData.success) {
+            localStorage.setItem('user', JSON.stringify(userData.user));
+            window.location.href = 'dashboard.html';
+          } else {
+            throw new Error('Erro ao carregar dados do usuário');
+          }
+        }
+      } catch (error) {
+        alert('Erro na autenticação biométrica: ' + error.message);
+      } finally {
+        document.getElementById('biometricLoginBtn').textContent = '🔐 Entrar com Biometria';
+        document.getElementById('biometricLoginBtn').disabled = false;
+      }
+    });
+  </script>
 </body>
 </html>

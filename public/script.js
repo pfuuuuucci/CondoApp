@@ -1,3 +1,15 @@
+// Verificação imediata de admin-app (antes de carregar DOM)
+(function() {
+  const user = JSON.parse(localStorage.getItem('user') || 'null');
+
+  // Se está no dashboard e é admin-app, redireciona imediatamente
+  if (window.location.pathname.endsWith('dashboard.html') && user && user.role === 'admin-app') {
+    console.log('⚡ Admin-app detectado, redirecionamento imediato');
+    window.location.replace('aprovar-usuarios.html'); // replace evita histórico
+    return;
+  }
+})();
+
 // LOGIN
 document.addEventListener('DOMContentLoaded', () => {
   const form = document.getElementById('loginForm');
@@ -18,13 +30,14 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('user', JSON.stringify(data.user));
 
         // Verifica se é primeiro acesso - redireciona para alterar senha
-        if (data.user.primeiro_acesso) {
+        if (data.primeiro_acesso) {
           if (data.user.role === 'sindico') {
             // Síndico: precisa validar token (pois se cadastrou sozinho)
             window.location.href = `validar-token.html?email=${encodeURIComponent(data.user.email)}&msg=2`;
           } else {
             // Morador/Mensageiro: vai direto para nova senha (cadastrado pelo síndico)
-            window.location.href = `nova-senha.html?email=${encodeURIComponent(data.user.email)}&token=DIRECT`;
+            console.log('🔍 Redirecionando para primeiro acesso direto');
+            window.location.href = 'nova-senha.html?direct=true';
           }
           return;
         }
@@ -66,7 +79,7 @@ function formatDateTimeUTCtoLocal(utcDateTime) {
   const date = new Date(utcDateTime);
   return date.toLocaleString('pt-BR', {
     day: '2-digit',
-    month: '2-digit', 
+    month: '2-digit',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit'
@@ -90,6 +103,54 @@ document.addEventListener('DOMContentLoaded', () => {
     const menuToggler = document.querySelector('.navbar-toggler');
     const messageIcons = document.getElementById('messageIcons');
 
+    // Configurar biometria no dashboard
+    const biometricConfigLink = document.getElementById('biometricConfigLink');
+    if (biometricConfigLink) {
+      biometricConfigLink.addEventListener('click', async (e) => {
+        e.preventDefault();
+
+        if (window.biometricAuth && window.biometricAuth.isSupported) {
+          try {
+            const success = await window.biometricAuth.showBiometricOptions(user.id, user.name);
+            if (success) {
+              console.log('✅ Configuração biométrica atualizada');
+            }
+          } catch (error) {
+            console.error('❌ Erro na configuração biométrica:', error);
+            alert('Erro: ' + error.message);
+          }
+        } else {
+          alert('⚠️ Biometria não suportada neste dispositivo ou navegador');
+        }
+      });
+    }
+
+    // Verificar biometria após login (apenas uma vez por sessão)
+    const biometricChecked = sessionStorage.getItem('biometric_checked');
+    if (!biometricChecked && window.biometricAuth && window.biometricAuth.isSupported) {
+      setTimeout(async () => {
+        try {
+          const status = await window.biometricAuth.checkBiometricStatus(user.id);
+
+          // Oferecer configuração apenas se nunca foi configurado
+          if (status === 'not_configured') {
+            const offered = localStorage.getItem('biometric_offered');
+            if (!offered) {
+              const configured = await window.biometricAuth.showBiometricOptions(user.id, user.name);
+              if (!configured) {
+                localStorage.setItem('biometric_offered', 'true'); // Não oferecer novamente
+              }
+            }
+          }
+          // Para outros status, usuário pode acessar via menu
+
+          sessionStorage.setItem('biometric_checked', 'true');
+        } catch (error) {
+          console.log('Biometria não disponível:', error.message);
+        }
+      }, 3000); // Aguardar 3 segundos após carregar dashboard
+    }
+
     if (user.role === 'sindico') {
       // Síndico: acesso completo ao menu hambúrguer e ícones de mensagens
       if (menuToggler) menuToggler.style.setProperty('display', 'block', 'important');
@@ -107,10 +168,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (menuToggler) menuToggler.style.setProperty('display', 'none', 'important');
       if (messageIcons) messageIcons.style.setProperty('display', 'flex', 'important');
     } else if (user.role === 'admin-app') {
-      // Admin-app: não deveria chegar aqui, mas esconde tudo por segurança
-      if (menuToggler) menuToggler.style.setProperty('display', 'none', 'important');
-      if (messageIcons) messageIcons.style.setProperty('display', 'none', 'important');
+      // Admin-app: se chegou aqui, algo deu errado, mas já foi tratado no topo
+      console.log('🔄 Admin-app - redirecionamento de segurança');
+      window.location.replace('aprovar-usuarios.html');
+      return;
     }
+
+    // Tornar página visível após verificações
+    document.body.classList.add('loaded');
 
     // --- FLUXO DE BOAS-VINDAS, REFRESH E CACHE ---
     // Sistema inteligente que detecta origem do acesso e exibe tela apropriada:
@@ -171,13 +236,13 @@ document.addEventListener('DOMContentLoaded', () => {
       // REFRESH NORMAL OU ACESSO DIRETO: mostra mensagens sem boas-vindas
       if (welcomeScreen) welcomeScreen.style.display = 'none';
       if (messagesListContainer) messagesListContainer.style.display = 'block';
-      
+
       // 🎯 ZERAR BADGE FUCCI
       if (window.appBadgeManager) {
         window.appBadgeManager.sendZeroBadgeToServiceWorker();
       }
       // FIM ZERAR BADGE FUCCI
-      
+
       loadMessages();
     }
     // --- FIM DO FLUXO ---
@@ -223,6 +288,13 @@ async function loadMessages() {
     return;
   }
 
+  // Verificação de segurança: admin-app não deve acessar mensagens
+  if (user.role === 'admin-app') {
+    console.log('🚫 Admin-app tentou acessar mensagens, redirecionando...');
+    window.location.href = 'aprovar-usuarios.html';
+    return;
+  }
+
   let messages = [];
 
   try {
@@ -240,8 +312,8 @@ async function loadMessages() {
     list.innerHTML = '<div class="alert alert-info text-center">Nenhuma mensagem válida no momento.</div>';
   } else {
     messages.forEach(msg => {
-      const deleteButton = (user.role === 'sindico' || user.role === 'mensageiro') 
-        ? `<button class="btn btn-sm btn-danger ms-2" onclick="deleteMessage(${msg.id})">Excluir</button>` 
+      const deleteButton = (user.role === 'sindico' || user.role === 'mensageiro')
+        ? `<button class="btn btn-sm btn-danger ms-2" onclick="deleteMessage(${msg.id})">Excluir</button>`
         : '';
 
       list.innerHTML += `
@@ -252,7 +324,7 @@ async function loadMessages() {
               ${msg.assunto ? `<h6 class="mb-1 text-primary">${msg.assunto}</h6>` : ''}
               <p class="mb-1">${msg.content}</p>
               <small class="text-muted">
-                Vigência: ${formatDateTimeUTCtoLocal(msg.inicioVigencia)} até ${formatDateTimeUTCtoLocal(msg.fimVigencia)} | 
+                Vigência: ${formatDateTimeUTCtoLocal(msg.inicioVigencia)} até ${formatDateTimeUTCtoLocal(msg.fimVigencia)} |
                 Destino: ${msg.destinatarioNome}
               </small>
             </div>
@@ -274,8 +346,8 @@ function confirmarAcao(mensagem) {
   return new Promise((resolve) => {
     const modal = document.createElement('div');
     modal.style.cssText = `
-      position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-      background: rgba(0,0,0,0.5); display: flex; align-items: center; 
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5); display: flex; align-items: center;
       justify-content: center; z-index: 9999;
     `;
 
@@ -365,7 +437,7 @@ class AppBadgeManager {
             }
           }
 
-          const response = { 
+          const response = {
             userId: userId,
             timestamp: Date.now(),
             source: source
@@ -524,7 +596,7 @@ class AppBadgeManager {
       // Garantir que Service Worker esteja ativo antes de enviar comandos
       if ('serviceWorker' in navigator) {
         let registration = await navigator.serviceWorker.getRegistration();
-        
+
         // Se não há registration, esperar um pouco e tentar novamente
         if (!registration) {
           console.log('⏱️ Aguardando Service Worker...');
@@ -535,7 +607,7 @@ class AppBadgeManager {
         if (registration) {
           // Aguardar SW estar ativo
           let serviceWorker = registration.active;
-          
+
           if (!serviceWorker) {
             console.log('⏱️ Service Worker não ativo, aguardando...');
             await new Promise(resolve => setTimeout(resolve, 1500));

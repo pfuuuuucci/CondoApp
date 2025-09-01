@@ -29,22 +29,77 @@
       e.preventDefault();
       const password = document.getElementById('password').value;
       const confirmPassword = document.getElementById('confirmPassword').value;
-      const params = new URLSearchParams(window.location.search);
-      const email = params.get('email');
-      const token = params.get('token');
+
+      if (password !== confirmPassword) {
+        document.getElementById('msg').innerHTML = `
+          <div class="alert alert-danger">
+            As senhas não coincidem
+          </div>
+        `;
+        return;
+      }
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const email = urlParams.get('email');
+      const token = urlParams.get('token');
+      const isDirect = urlParams.get('direct');
+
+      console.log('🔍 DEBUG - Parâmetros da URL:', {
+        email,
+        token,
+        isDirect,
+        urlCompleta: window.location.href
+      });
+
+      // Para primeiro acesso direto, pegar email do localStorage
+      let finalEmail = email;
+      if (isDirect === 'true' && !email) {
+        const user = JSON.parse(localStorage.getItem('user') || 'null');
+        if (user && user.email) {
+          finalEmail = user.email;
+          console.log('🔍 Email obtido do localStorage:', finalEmail);
+        } else {
+          document.getElementById('msg').innerHTML = `
+            <div class="alert alert-danger">
+              Erro: Sessão expirada. Faça login novamente.
+            </div>
+          `;
+          setTimeout(() => window.location.href = 'login.html', 2000);
+          return;
+        }
+      } else if (!finalEmail) {
+        document.getElementById('msg').innerHTML = `
+          <div class="alert alert-danger">
+            Erro: E-mail não encontrado. Entre em contato com o administrador.
+          </div>
+        `;
+        return;
+      }
+
+      // Para primeiro acesso direto, usar token especial
+      const finalToken = isDirect === 'true' ? 'DIRECT' : token;
 
       try {
         const res = await fetch('/api/nova-senha', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, token, password })
+          body: JSON.stringify({ 
+            email: finalEmail, 
+            token: finalToken, 
+            password,
+            isDirect: isDirect === 'true'
+          })
         });
 
         const data = await res.json();
 
         if (!res.ok) throw new Error(data.error || 'Erro ao alterar senha');
 
-        window.location.href = 'login.html?msg=senha_alterada';
+        if (isDirect === 'true') {
+          window.location.href = 'login.html?msg=senha_alterada_primeiro_acesso';
+        } else {
+          window.location.href = 'login.html?msg=senha_alterada';
+        }
 
       } catch (error) {
         document.getElementById('msg').innerHTML = `
