@@ -4,7 +4,7 @@
 ## 👥 Integrantes
 - Paulo Fucci
 - Diogo Lima
-- Emanuelly de Lucena
+- Emanuelly Oliveira de Lucena
 - Gabriel Parra
 - Pedro Henrique Angelo de Macedo
 
