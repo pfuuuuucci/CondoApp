@@ -6,7 +6,7 @@
 - Diogo Lima
 - Emanuelly de Lucena
 - Gabriel Parra
-- Pedro Macedo
+- Pedro Henrique Angelo de Macedo
 
 ![CondoApp](public/assets/logo-condoapp.png)
 
