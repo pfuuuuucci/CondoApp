@@ -11,6 +11,7 @@
 ## 📹 Estes são os vídeos!
 - Funcionamento no Celular: https://youtu.be/F8Y7WdHSaBs
 - Apresentação CondoTorre: https://youtu.be/KMl9okapX6o
+- Demonstração (Parte I e Parte II): https://drive.google.com/drive/folders/1c0YUjO7Nj5mUps9Tr6JaBmfRqb0xd9rw?usp=sharing
 
 ![CondoApp](public/assets/logo-condoapp.png)
 
